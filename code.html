@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D ASCII Graphics Editor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d0d0d; color: #e8e8e0; font-family: 'Courier New', monospace; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  #toolbar { background: #1a1a1a; border-bottom: 1px solid #333; padding: 8px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #toolbar h1 { font-size: 13px; font-weight: 700; color: #f0c040; letter-spacing: 2px; margin-right: 8px; white-space: nowrap; }
+
+  .btn { background: #2a2a2a; border: 1px solid #444; color: #ccc; padding: 5px 12px; font-family: 'Courier New', monospace; font-size: 12px; cursor: pointer; border-radius: 3px; transition: all 0.15s; white-space: nowrap; }
+  .btn:hover { background: #3a3a3a; color: #fff; border-color: #666; }
+  .btn.active { background: #f0c040; color: #111; border-color: #f0c040; font-weight: 700; }
+  .btn.danger { border-color: #c0392b; color: #e74c3c; }
+  .btn.danger:hover { background: #c0392b; color: #fff; }
+
+  .sep { width: 1px; height: 24px; background: #333; margin: 0 4px; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  #sidebar { width: 220px; background: #141414; border-right: 1px solid #2a2a2a; display: flex; flex-direction: column; overflow: hidden; }
+  #sidebar-header { padding: 10px 12px 6px; font-size: 11px; color: #666; letter-spacing: 1px; text-transform: uppercase; border-bottom: 1px solid #222; }
+  #object-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  #object-list::-webkit-scrollbar { width: 4px; }
+  #object-list::-webkit-scrollbar-thumb { background: #333; }
+
+  .obj-item { padding: 7px 12px; font-size: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-left: 2px solid transparent; }
+  .obj-item:hover { background: #1e1e1e; }
+  .obj-item.selected { background: #1e1e2e; border-left-color: #f0c040; color: #fff; }
+  .obj-item .obj-name { color: #aaa; }
+  .obj-item.selected .obj-name { color: #f0c040; }
+  .obj-item .obj-del { color: #555; font-size: 14px; padding: 0 2px; cursor: pointer; }
+  .obj-item .obj-del:hover { color: #e74c3c; }
+
+  #props-panel { border-top: 1px solid #222; padding: 10px 12px; }
+  #props-panel h3 { font-size: 11px; color: #666; letter-spacing: 1px; margin-bottom: 8px; }
+  .prop-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .prop-row label { font-size: 11px; color: #777; width: 60px; flex-shrink: 0; }
+  .prop-row input { background: #222; border: 1px solid #333; color: #ddd; padding: 3px 6px; font-family: 'Courier New', monospace; font-size: 12px; width: 60px; border-radius: 2px; }
+  .prop-row input:focus { outline: none; border-color: #f0c040; }
+  #apply-btn { width: 100%; margin-top: 4px; }
+
+  #canvas-area { flex: 1; overflow: auto; padding: 16px; background: #0d0d0d; }
+  #canvas-area::-webkit-scrollbar { width: 6px; height: 6px; }
+  #canvas-area::-webkit-scrollbar-thumb { background: #333; }
+  #canvas-wrap { display: inline-block; }
+  #grid { font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.2; letter-spacing: 0.05em; white-space: pre; color: #e8e8e0; background: #111; border: 1px solid #2a2a2a; padding: 4px 8px; cursor: crosshair; user-select: none; }
+  #grid .char-star { color: #f0c040; }
+  #grid .char-line { color: #4ec9b0; }
+
+  #statusbar { background: #111; border-top: 1px solid #222; padding: 4px 12px; font-size: 11px; color: #555; display: flex; gap: 20px; }
+  #statusbar span { color: #888; }
+
+  #modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; align-items: center; justify-content: center; }
+  #modal-overlay.show { display: flex; }
+  #modal { background: #1a1a1a; border: 1px solid #333; padding: 20px; min-width: 280px; border-radius: 4px; }
+  #modal h2 { font-size: 14px; color: #f0c040; margin-bottom: 14px; letter-spacing: 1px; }
+  #modal .field { margin-bottom: 10px; }
+  #modal label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; }
+  #modal input, #modal select { width: 100%; background: #222; border: 1px solid #444; color: #ddd; padding: 6px 8px; font-family: 'Courier New', monospace; font-size: 13px; border-radius: 3px; }
+  #modal input:focus, #modal select:focus { outline: none; border-color: #f0c040; }
+  #modal-btns { display: flex; gap: 8px; margin-top: 14px; }
+  #modal-btns button { flex: 1; padding: 7px; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>★ ASCII DRAW</h1>
+  <div class="sep"></div>
+  <button class="btn" onclick="openModal('circle')">◯ Circle</button>
+  <button class="btn" onclick="openModal('rect')">▭ Rect</button>
+  <button class="btn" onclick="openModal('line')">╱ Line</button>
+  <button class="btn" onclick="openModal('triangle')">△ Triangle</button>
+  <div class="sep"></div>
+  <button class="btn" id="char-toggle" onclick="toggleChar()">Char: *</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="clearAll()">⌧ Clear All</button>
+  <button class="btn" onclick="downloadTxt()">↓ Export .txt</button>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div id="sidebar-header">Objects</div>
+    <div id="object-list"></div>
+    <div id="props-panel">
+      <h3>Properties</h3>
+      <div id="props-content"><p style="font-size:11px;color:#555;">Select an object to edit.</p></div>
+    </div>
+  </div>
+
+  <div id="canvas-area">
+    <div id="canvas-wrap">
+      <div id="grid"></div>
+    </div>
+  </div>
+</div>
+
+<div id="statusbar">
+  <span>Objects: <span id="s-count">0</span></span>
+  <span>Canvas: <span id="s-size">80×40</span></span>
+  <span id="s-msg">Ready</span>
+</div>
+
+<div id="modal-overlay">
+  <div id="modal">
+    <h2 id="modal-title">Add Shape</h2>
+    <div id="modal-fields"></div>
+    <div id="modal-btns">
+      <button class="btn active" onclick="confirmModal()">Add</button>
+      <button class="btn" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const COLS = 80, ROWS = 40;
+let grid = [];
+let objects = [];
+let selectedId = null;
+let currentChar = '*';
+let modalType = null;
+let editingId = null;
+let idCounter = 0;
+
+function initGrid() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) { grid.push([]); for (let c = 0; c < COLS; c++) grid[r].push(' '); }
+}
+
+function renderGrid() {
+  initGrid();
+  objects.forEach(obj => drawObject(obj));
+  let html = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const ch = grid[r][c];
+      if (ch === '*') html += '<span class="char-star">*</span>';
+      else if (ch === '_') html += '<span class="char-line">_</span>';
+      else html += ch === ' ' ? ' ' : ch;
+    }
+    html += '\n';
+  }
+  document.getElementById('grid').innerHTML = html;
+}
+
+function setCell(r, c, ch) {
+  if (r >= 0 && r < ROWS && c >= 0 && c < COLS) grid[r][c] = ch;
+}
+
+function drawObject(obj) {
+  const ch = obj.char || '*';
+  const {type} = obj;
+  if (type === 'circle') drawCircle(obj.x, obj.y, obj.r, ch);
+  else if (type === 'rect') drawRect(obj.x, obj.y, obj.w, obj.h, ch);
+  else if (type === 'line') drawLine(obj.x1, obj.y1, obj.x2, obj.y2, ch);
+  else if (type === 'triangle') drawTriangle(obj.x, obj.y, obj.base, obj.height, ch);
+}
+
+function drawCircle(cx, cy, r, ch) {
+  for (let angle = 0; angle < 360; angle += 2) {
+    const rad = angle * Math.PI / 180;
+    const x = Math.round(cx + r * Math.cos(rad) * 2);
+    const y = Math.round(cy + r * Math.sin(rad) * 0.5);
+    setCell(y, x, ch);
+  }
+}
+
+function drawRect(x, y, w, h, ch) {
+  for (let c = x; c <= x + w; c++) { setCell(y, c, ch); setCell(y + h, c, ch); }
+  for (let r = y; r <= y + h; r++) { setCell(r, x, ch); setCell(r, x + w, ch); }
+}
+
+function drawLine(x1, y1, x2, y2, ch) {
+  let dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+  let sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1;
+  let err = dx - dy;
+  let x = x1, y = y1;
+  while (true) {
+    setCell(y, x, ch);
+    if (x === x2 && y === y2) break;
+    let e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x += sx; }
+    if (e2 < dx) { err += dx; y += sy; }
+  }
+}
+
+function drawTriangle(x, y, base, height, ch) {
+  const mid = Math.floor(base / 2);
+  for (let row = 0; row < height; row++) {
+    const left = x + mid - row;
+    const right = x + mid + row;
+    if (row === height - 1) { for (let c = left; c <= right; c++) setCell(y + row, c, ch); }
+    else { setCell(y + row, left, ch); setCell(y + row, right, ch); }
+    setCell(y, x + mid, ch);
+  }
+}
+
+function renderSidebar() {
+  const list = document.getElementById('object-list');
+  list.innerHTML = '';
+  objects.forEach((obj, i) => {
+    const div = document.createElement('div');
+    div.className = 'obj-item' + (obj.id === selectedId ? ' selected' : '');
+    div.innerHTML = `<span class="obj-name">${i+1}. ${obj.type} (${obj.char})</span><span class="obj-del" title="Delete" onclick="deleteObj(${obj.id},event)">✕</span>`;
+    div.onclick = () => selectObj(obj.id);
+    list.appendChild(div);
+  });
+  document.getElementById('s-count').textContent = objects.length;
+  renderProps();
+}
+
+function selectObj(id) {
+  selectedId = id;
+  renderSidebar();
+  renderGrid();
+}
+
+function deleteObj(id, e) {
+  e.stopPropagation();
+  objects = objects.filter(o => o.id !== id);
+  if (selectedId === id) selectedId = null;
+  renderSidebar();
+  renderGrid();
+  status('Object deleted');
+}
+
+function renderProps() {
+  const panel = document.getElementById('props-content');
+  const obj = objects.find(o => o.id === selectedId);
+  if (!obj) { panel.innerHTML = '<p style="font-size:11px;color:#555;">Select an object to edit.</p>'; return; }
+
+  const fields = getFieldsForType(obj.type, obj);
+  let html = fields.map(f => `<div class="prop-row"><label>${f.label}</label><input type="number" id="prop-${f.key}" value="${f.value}" min="${f.min||0}" max="${f.max||200}"></div>`).join('');
+  html += `<div class="prop-row"><label>Char</label><select id="prop-char" style="width:60px;padding:3px 4px;font-size:12px;background:#222;border:1px solid #333;color:#ddd;border-radius:2px;font-family:'Courier New',monospace;"><option ${obj.char==='*'?'selected':''}>*</option><option ${obj.char==='_'?'selected':''}>_</option></select></div>`;
+  html += `<button class="btn active" id="apply-btn" onclick="applyProps()">Apply</button>`;
+  panel.innerHTML = html;
+}
+
+function getFieldsForType(type, vals) {
+  if (type === 'circle') return [{label:'cx',key:'x',value:vals.x},{label:'cy',key:'y',value:vals.y},{label:'r',key:'r',value:vals.r,min:1,max:20}];
+  if (type === 'rect') return [{label:'x',key:'x',value:vals.x},{label:'y',key:'y',value:vals.y},{label:'w',key:'w',value:vals.w,min:1},{label:'h',key:'h',value:vals.h,min:1}];
+  if (type === 'line') return [{label:'x1',key:'x1',value:vals.x1},{label:'y1',key:'y1',value:vals.y1},{label:'x2',key:'x2',value:vals.x2},{label:'y2',key:'y2',value:vals.y2}];
+  if (type === 'triangle') return [{label:'x',key:'x',value:vals.x},{label:'y',key:'y',value:vals.y},{label:'base',key:'base',value:vals.base,min:1},{label:'ht',key:'height',value:vals.height,min:1}];
+}
+
+function applyProps() {
+  const obj = objects.find(o => o.id === selectedId);
+  if (!obj) return;
+  const fields = getFieldsForType(obj.type, obj);
+  fields.forEach(f => { const el = document.getElementById('prop-'+f.key); if (el) obj[f.key] = parseInt(el.value)||0; });
+  const charSel = document.getElementById('prop-char');
+  if (charSel) obj.char = charSel.value;
+  renderSidebar();
+  renderGrid();
+  status('Object updated');
+}
+
+function clearAll() {
+  if (!objects.length || confirm('Clear all objects?')) { objects = []; selectedId = null; renderSidebar(); renderGrid(); status('Canvas cleared'); }
+}
+
+function toggleChar() {
+  currentChar = currentChar === '*' ? '_' : '*';
+  document.getElementById('char-toggle').textContent = 'Char: ' + currentChar;
+}
+
+function downloadTxt() {
+  initGrid(); objects.forEach(o => drawObject(o));
+  let txt = '';
+  for (let r = 0; r < ROWS; r++) { txt += grid[r].join('') + '\n'; }
+  const a = document.createElement('a');
+  a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(txt);
+  a.download = 'ascii_art.txt'; a.click();
+  status('Exported ascii_art.txt');
+}
+
+function status(msg) { document.getElementById('s-msg').textContent = msg; }
+
+const modalDefs = {
+  circle: { title:'Add Circle', fields:[{label:'Center X',key:'x',def:20,min:0,max:79},{label:'Center Y',key:'y',def:10,min:0,max:39},{label:'Radius',key:'r',def:6,min:1,max:20}] },
+  rect:   { title:'Add Rectangle', fields:[{label:'X',key:'x',def:5},{label:'Y',key:'y',def:3},{label:'Width',key:'w',def:20,min:1},{label:'Height',key:'h',def:10,min:1}] },
+  line:   { title:'Add Line', fields:[{label:'X1',key:'x1',def:2},{label:'Y1',key:'y1',def:2},{label:'X2',key:'x2',def:30},{label:'Y2',key:'y2',def:15}] },
+  triangle: { title:'Add Triangle', fields:[{label:'X',key:'x',def:10},{label:'Y (top)',key:'y',def:2},{label:'Base',key:'base',def:15,min:1},{label:'Height',key:'height',def:10,min:1}] },
+};
+
+function openModal(type) {
+  modalType = type; editingId = null;
+  const def = modalDefs[type];
+  document.getElementById('modal-title').textContent = def.title;
+  document.getElementById('modal-fields').innerHTML =
+    def.fields.map(f => `<div class="field"><label>${f.label}</label><input type="number" id="mf-${f.key}" value="${f.def}" min="${f.min||0}" max="${f.max||200}"></div>`).join('') +
+    `<div class="field"><label>Character</label><select id="mf-char" style="background:#222;border:1px solid #444;color:#ddd;padding:6px 8px;font-family:'Courier New',monospace;font-size:13px;border-radius:3px;width:100%;"><option value="*" ${currentChar==='*'?'selected':''}>* (star)</option><option value="_" ${currentChar==='_'?'selected':''}>_ (underscore)</option></select></div>`;
+  document.getElementById('modal-overlay').classList.add('show');
+}
+
+function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); modalType = null; }
+
+function confirmModal() {
+  const def = modalDefs[modalType];
+  const obj = { id: ++idCounter, type: modalType, char: document.getElementById('mf-char').value };
+  def.fields.forEach(f => { obj[f.key] = parseInt(document.getElementById('mf-'+f.key).value) || 0; });
+  objects.push(obj);
+  selectedId = obj.id;
+  closeModal();
+  renderSidebar();
+  renderGrid();
+  status(`Added ${modalType}`);
+}
+
+document.getElementById('modal-overlay').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+initGrid();
+renderGrid();
+renderSidebar();
+</script>
+</body>
+</html>
